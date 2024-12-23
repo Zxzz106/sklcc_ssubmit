@@ -8,16 +8,19 @@ dir_sepa="------------------------文件夹------------------------"
 file_sepa="-------------------------文件-------------------------"
 
 
+        
+
+
 
 
 class Application(object):
-    para={"Server": "","Port": "","Username": "","Password": "","Version": "","Solver": "","Partition": "","Core": "","Account": "","WorkingDir": "","Journal": ""}
+    para={"Cluster": "","Server": "","Port": "","Username": "","Password": "","Version": "","Solver": "","Partition": "","Core": "","Account": "","WorkingDir": "","Journal": ""}
 
     def __init__(self):
         window=tk.Tk()
         self.UI=AppUI.UI(window, self)
 
-        self.cfg_dir=os.path.expanduser('~')+"/.config/Slurm_Submit"
+        self.cfg_dir=os.path.expanduser('~')+"/.config/sklcc_ssubmit"
         self.read_cfg(self.cfg_dir+"/default.json")
         self.sshc=sshClient()
         self.Status("Ready")
@@ -33,6 +36,8 @@ class Application(object):
             filetypes=[("JSON File", "*.json"), ("Text File", "*.txt"), ("All Files", "*.*")]
         )
         if file_path:
+            self.I_cls()
+            self.UI.FileManager_Listbox.delete(0,tk.END)
             self.read_cfg(file_path)
             self.to_stdout(f"Read {file_path}")
 
@@ -73,8 +78,10 @@ class Application(object):
         self.Entry_Text(self.UI.Account_Entry, self.para["Account"])
         self.Entry_Text(self.UI.WorkingDir_Entry, self.para["WorkingDir"])
         self.Entry_Text(self.UI.Journal_Entry, self.para["Journal"])
+        self.Entry_Text(self.UI.Cluster_Combobox, self.para["Cluster"])
         
     def get_para(self): # 将Entry写入cfg
+        self.para["Cluster"]=self.UI.Cluster_Combobox.get().strip()
         self.para["Server"]=self.UI.Server_Entry.get().strip()
         self.para["Port"]=self.UI.ServerPort_Entry.get().strip()
         self.para["Username"]=self.UI.Username_Entry.get().strip()
@@ -94,6 +101,7 @@ class Application(object):
         Entry.insert(0,str)
 
     def stdout_cmd(self, s):
+        # print(s)
         res=None
         try:
             res=str(self.sshc.client.exec_command(s)[1].read(), encoding='utf-8')
@@ -321,8 +329,8 @@ class Application(object):
             return
         
         with tempfile.NamedTemporaryFile(suffix=".zip") as zfile:
+            zfile.close()
             self.Status("Uploading...")
-            os.remove(zfile.name)
             zip=zipfile.ZipFile(zfile.name, 'w', zipfile.ZIP_DEFLATED)
             for f in file_paths:
                 self.to_stdout(f"Zip {os.path.basename(f)}")
@@ -333,7 +341,8 @@ class Application(object):
                 self.Status("Upload Failed")
                 return
             self.to_stdout(self.stdout_cmd(f"unzip -O CP936 {self.pwd}/{os.path.basename(zfile.name)} -d {self.pwd}; rm -f {self.pwd}/{os.path.basename(zfile.name)}"))
-                
+
+            os.remove(zfile.name)
             self.Status("Done Upload")
             self.c_refresh()
             messagebox.showinfo("上传文件", "上传完成！")
@@ -351,8 +360,8 @@ class Application(object):
             return
 
         with tempfile.NamedTemporaryFile(suffix=".zip") as zfile:
+            zfile.close()
             self.Status("Uploading...")
-            os.remove(zfile.name)
             zip=zipfile.ZipFile(zfile.name, 'w', zipfile.ZIP_DEFLATED)
 
             for path, dirnames, filenames in os.walk(dir_path):
@@ -364,7 +373,9 @@ class Application(object):
             self.to_stdout(f"Upload({zfile.name},{self.pwd}/{os.path.basename(zfile.name)})")
             if not self.sshc.Upload(zfile.name,self.pwd+"/"+os.path.basename(zfile.name)):
                 self.Status("Upload Failed")
+                os.remove(zfile.name)
                 return
+            os.remove(zfile.name)
             self.to_stdout(self.stdout_cmd(f"mkdir {os.path.basename(dir_path)}; unzip -O CP936 {self.pwd}/{os.path.basename(zfile.name)} -d {self.pwd}/{os.path.basename(dir_path)}; rm -f {self.pwd}/{os.path.basename(zfile.name)}"))
             self.Status("Done Upload")
             self.c_refresh()
@@ -453,34 +464,45 @@ class Application(object):
         self.UI.serverstatusbar["text"]=f'已连接到服务器{self.para["Server"]}:{self.para["Port"]}'
         self.Connected=True
         self.c_cd("~")
+        self.I_cls()
+        self.homedir=self.stdout_cmd(f"cd ~; pwd")
 
         # self.channel.set
         self.TC_reconnect()
         thread_func(self.keep_terminal)
 
-    def C_wd_selcur(self):
+    def C_wd_selcur(self, Ob):
         if not self.Connected:
             return
-        self.Entry_Text(self.UI.WorkingDir_Entry, self.pwd)
+        self.Entry_Text(Ob, self.pwd)
         self.get_para()
 
     
-    def C_jo_selcur(self):
+    def C_jo_selcur(self, Ob):
         if not self.Connected:
             return
         selection=self.UI.FileManager_Listbox.curselection()
         if not (len(selection)==1 and self.UI.FileManager_Listbox.get(selection[0]) in self.Current_Files):
             messagebox.showinfo("选择Journal", "选且仅选1个Journal文件")
-        self.Entry_Text(self.UI.Journal_Entry, self.UI.FileManager_Listbox.get(selection[0]))
+            return
+        self.Entry_Text(Ob, self.UI.FileManager_Listbox.get(selection[0]))
         self.get_para()
+        if self.para["Journal"][-4:] != ".jou":
+            messagebox.showwarning("警告", "选择的Journal文件，后缀名应为*.jou")
+            return
     
-    def C_wd_tail(self):
+    def C_wd_tail(self, Ob_E, Ob_J):
         if not self.Connected:
             return
         self.get_para()
-        self.channel.send(f'tail \"{self.para["WorkingDir"]}/Result_{self.para["Journal"]}/stdout_fluent.txt\" -f &'+"\n")
+        res_d=f"{Ob_E.get().strip()}/Result_{Ob_J.get().strip().rsplit('.', 1)[0]}/stdout_fluent.txt"
+        if(self.stdout_cmd(f"[ ! -e \"{res_d}\" ] && echo 1").strip() == "1"):
+            messagebox.showerror("文件不存在", f"请检查输入是否正确，且已经运行\n工作文件夹：{Ob_E.get().strip()}\nJournal文件：{Ob_J.get().strip()}")
+            return
+        self.channel.send(f'tail \"{res_d}\" -f &'+"\n")
 
-    
+    def send_channel(self, str):
+        self.channel.send(str+"\n")
 
     def S_submit(self):
         if not self.Connected:
@@ -488,32 +510,82 @@ class Application(object):
         
         self.get_para()
         if self.para["Journal"][-4:] != ".jou":
-            messagebox.showwarning("警告", "选择的Journal文件，不是*.jou")
+            messagebox.showwarning("错误", "选择的Journal文件，后缀名应为*.jou")
             return
-        self.stdout_cmd(f'dos2unix \"{self.para["WorkingDir"]}/{self.para["Journal"]}\"')
+        jou_abspath=self.para["WorkingDir"]+"/"+self.para["Journal"]
+        if(self.stdout_cmd(f"[ ! -e \"{jou_abspath}\" ] && echo 1").strip() == "1"):
+            messagebox.showerror("错误", "选择的Journal文件不存在\n"+jou_abspath)
+            return
+        # self.stdout_cmd(f'dos2unix \"{self.para["WorkingDir"]}/{self.para["Journal"]}\"')
+        self.stdout_cmd(r"if [ ! -d $HOME/.fluent_resdir ];then mkdir $HOME/.fluent_resdir; fi")
+        if self.UI.Cluster_Combobox.get() == "hust":
+            ver_string="module load app/fluent/"+self.para["Version"]
+        elif self.UI.Cluster_Combobox.get() == "sklcc":
+            if self.para["Version"]!="23.1":
+                messagebox.showerror("提交错误", "煤燃烧集群暂仅支持2023R1版本")
+                return
+            ver_string="module load ansys/fluent_v231"
+        else:
+            return
 
-        args=[self.para["WorkingDir"], self.para["Version"],self.para["Solver"],self.para["Journal"],self.para["Partition"],self.para["Core"],self.para["Account"]]
-        if not messagebox.askokcancel("提交作业", f"工作文件夹：{args[0]}\nFluent版本：{args[1]}\n求解器：{args[2]}\nJournal脚本：{args[3]}\n计算分区：{args[4]}\n核心数量：{args[5]}\n计费账户：{args[6]}\n确认提交？"):
+        arg_list=[self.para["WorkingDir"],ver_string,self.para["Solver"],self.para["Journal"],self.para["Partition"],self.para["Core"],self.para["Account"]]
+        print(arg_list)
+        
+        
+        if not messagebox.askokcancel("提交作业", f"工作文件夹：{arg_list[0]}\nFluent版本：{arg_list[1]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n确认提交？"):
             return
-        sh=runfluentsh
-        for i in range(0,7):
-            sh=re.sub(r"\$"+f"{i+1}",args[i], sh)
-        # messagebox.showinfo("脚本",sh)
-        self.channel.send(sh)
+        
+        sh_path=self.para["WorkingDir"]+"/RunFluent.sh"
+        with tempfile.NamedTemporaryFile(suffix=".sh") as shfile:
+            shfile.close()
+            shfile=open(shfile.name, "w")
+            sh=runfluentsh.replace('\r\n', '\n')
+            shfile.write(sh)
+            shfile.close()
+            self.to_stdout(f"Write {shfile.name} to {sh_path}")
+            self.sshc.Upload(shfile.name,sh_path+"1")
+            self.stdout_cmd(f"cat {sh_path}1 | python -c \"import sys; sys.stdout.write(sys.stdin.read().replace('\\r\\n', '\\n'))\" > {sh_path}")
+            # self.stdout_cmd(f'dos2unix {sh_path}')
+            self.stdout_cmd(f"rm {sh_path}1")
+            os.remove(shfile.name)
+
+        # args=""
+        # for i in arg_list:
+        #     args=args+" \""+i+"\""
+        self.send_channel("export FLUENT_SOLVER_VER="+arg_list[2])
+        self.send_channel("export JOU_FILE="+arg_list[3])
+        self.send_channel("export SLURM_PARTITION="+arg_list[4])
+        self.send_channel("export SLURM_NTASKS="+arg_list[5])
+        self.send_channel("export SLURM_ACCOUNT="+arg_list[6])
+        self.send_channel(arg_list[1])
+        self.send_channel("cd "+arg_list[0])
+
+
+        # self.channel.send("bash \""+sh_path+'"'+args+"\n")
+        self.channel.send("bash \""+sh_path+'"'+"\n")
         self.channel.send(f"cd {self.pwd}"+"\n")
-        self.C_wd_tail()
-        resdir=f'{self.pwd}/Result_{self.para["Journal"]}'.rsplit('.', 1)[0]
+        resdir=f'{self.para["WorkingDir"]}/Result_{self.para["Journal"]}'.rsplit('.', 1)[0]
         self.to_stdout(f"cd {resdir}")
+        self.C_wd_tail(self.UI.WorkingDir_Entry, self.UI.Journal_Entry)
         self.c_cd(resdir)
     
+    def getwdjobid(self):
+        for i in self.Current_Files:
+            if re.fullmatch(r'slurm\.[0-9]+\.hosts',i) is not None:
+                return re.findall(r'\d+',i)
+        return ""
 
     def S_scancel(self):
         if not self.Connected:
             return
-        jobid=self.UI.Scancel_Entry.get().strip()
-        if jobid=="":
+        # jobid=self.UI.Scancel_Entry.get().strip()
+
+        jobid=simpledialog.askstring("取消作业", f"请输入作业ID（初始值为当前目录下的作业ID）", initialvalue=self.getwdjobid())
+        if jobid=="" or (jobid is None):
             return
-        if messagebox.askokcancel("取消作业", f"取消作业{jobid}？"):
+        if not jobid.isalnum():
+            messagebox.showerror("取消作业", "作业ID为数字！")
+        if messagebox.askokcancel("取消作业", f"确认取消作业{jobid}？"):
             self.channel.send(f"scancel {jobid}"+"\n")
     
     def S_scancel_u(self):
@@ -546,7 +618,7 @@ class Application(object):
     def I_sendcmd(self, event=None):
         if not self.Connected:
             return
-        cmd=self.Command_Entry.get().strip()
+        cmd=self.UI.Command_Entry.get().strip()
         self.channel.send(cmd+"\n")
         self.Entry_Text(self.UI.Command_Entry,"")
 
@@ -623,7 +695,7 @@ class Slurm_Submit():
         if os.path.isfile(cfg_path):
             messagebox.showerror("错误", f"无法在 {home_path} 下创建 .config 文件夹。\n存在同名文件！")
             exit(1)
-        cfg_path=cfg_path+'/Slurm_Submit'
+        cfg_path=cfg_path+'/sklcc_ssubmit'
         if not os.path.isdir(cfg_path):
             os.makedirs(cfg_path)
         cfg_path=cfg_path+'/default.json'
@@ -632,6 +704,7 @@ class Slurm_Submit():
 
     def write_cfg(self, cfg_path):
         data={
+            "Cluster": "",
             "Server": "",
             "Port": "",
             "Username": "",
@@ -650,18 +723,9 @@ class Slurm_Submit():
 
 
 runfluentsh=r"""
-FLUENT_SOLVER_VER=$3
-JOU_FILE=$4 
-SLURM_PARTITION=$5 
-SLURM_NTASKS=$6 
-SLURM_ACCOUNT=$7 
-module load app/fluent/$2 
-cd "$1"
-SLURM_JOB_NAME=$JOU_FILE 
-dos2unix $JOU_FILE 
-if [ ! -d $HOME/.fluent_resdir ];then
-    mkdir $HOME/.fluent_resdir
-fi
+echo $JOU_FILE
+JOB_NAME=${JOU_FILE%.*}
+dos2unix $JOU_FILE
 TEMP_D=$(mktemp -d -p $HOME/.fluent_resdir) || exit 1
 SOURCE_D=$PWD
 RESULT_DNAME="Result_`basename $JOU_FILE .jou`"
@@ -683,17 +747,32 @@ do
 done
 echo "" > stdout_fluent.txt
 echo "" > stderr_fluent.txt
-fluent $FLUENT_SOLVER_VER -g \
-       -t$SLURM_NTASKS \
-       -i  $JOU_FILE\
-       -mpi=intel -pib -scheduler=slurm \
-       -scheduler_queue=$SLURM_PARTITION \
-       -scheduler_opt="--comment=$SLURM_ACCOUNT" \
-       -scheduler_stdout=stdout_fluent.txt \
-       -scheduler_stderr=stderr_fluent.txt \
-       -scheduler_opt="--job-name=$SLURM_JOB_NAME"
+
+cat > $USER-scheduler.slurm <<EEOOFF
+#!/bin/bash
+#SBATCH -D .
+#SBATCH -n $SLURM_NTASKS
+#SBATCH -o stdout_fluent.txt
+#SBATCH -e stderr_fluent.txt
+#SBATCH -p $SLURM_PARTITION
+#SBATCH --comment=$SLURM_ACCOUNT
+#SBATCH --job-name=$JOB_NAME
+export FLUENT_AFFINITY=0
+export SLURM_ENABLED=1
+FL_SCHEDULER_HOST_FILE=slurm.\${SLURM_JOB_ID}.hosts
+/bin/rm -rf \${FL_SCHEDULER_HOST_FILE}
+scontrol show hostnames "\$SLURM_JOB_NODELIST" >> \$FL_SCHEDULER_HOST_FILE
+export SCHEDULER_TIGHT_COUPLING=1
+
+echo fluent $FLUENT_SOLVER_VER -g -t\$SLURM_NTASKS -i  $JOU_FILE -mpi=intel -pib -cnf=\${FL_SCHEDULER_HOST_FILE}
+fluent $FLUENT_SOLVER_VER -g -t\$SLURM_NTASKS -i  $JOU_FILE -mpi=intel -pib -cnf=\${FL_SCHEDULER_HOST_FILE}
+
+EEOOFF
+
+sbatch $USER-scheduler.slurm
 
 """
+
 
 if __name__== '__main__':
     Slurm_Submit()
