@@ -519,20 +519,24 @@ class Application(object):
         # self.stdout_cmd(f'dos2unix \"{self.para["WorkingDir"]}/{self.para["Journal"]}\"')
         self.stdout_cmd(r"if [ ! -d $HOME/.fluent_resdir ];then mkdir $HOME/.fluent_resdir; fi")
         if self.UI.Cluster_Combobox.get() == "hust":
-            ver_string="module load app/fluent/"+self.para["Version"]
+            load_fluent="module load app/fluent/"+self.para["Version"]
         elif self.UI.Cluster_Combobox.get() == "sklcc":
-            if self.para["Version"]!="23.1":
+            if self.para["Version"]=="23.1":
+                load_fluent="module load ansys/fluent_v231"
+            elif self.para["Version"]=="22.1":
+                load_fluent="export PATH=$PATH:/beegfs/home/ny2001010061/.software/ansys_inc/v221/fluent/bin"
+                messagebox.showwarning("警告", "2022R1版本可能有问题")
+            else:
                 messagebox.showerror("提交错误", "煤燃烧集群暂仅支持2023R1版本")
                 return
-            ver_string="module load ansys/fluent_v231"
         else:
             return
 
-        arg_list=[self.para["WorkingDir"],ver_string,self.para["Solver"],self.para["Journal"],self.para["Partition"],self.para["Core"],self.para["Account"]]
+        arg_list=[self.para["WorkingDir"],load_fluent,self.para["Solver"],self.para["Journal"],self.para["Partition"],self.para["Core"],self.para["Account"]]
         print(arg_list)
         
         
-        if not messagebox.askokcancel("提交作业", f"工作文件夹：{arg_list[0]}\nFluent版本：{arg_list[1]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n确认提交？"):
+        if not messagebox.askokcancel("提交作业", f"工作文件夹：{arg_list[0]}\nFluent版本：{self.para["Version"]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n确认提交？"):
             return
         
         sh_path=self.para["WorkingDir"]+"/RunFluent.sh"
@@ -540,6 +544,8 @@ class Application(object):
             shfile.close()
             shfile=open(shfile.name, "w")
             sh=runfluentsh.replace('\r\n', '\n')
+            if self.para["Cluster"]=="sklcc":
+                sh=sklcc_runfluentsh.replace('\r\n', '\n')
             shfile.write(sh)
             shfile.close()
             self.to_stdout(f"Write {shfile.name} to {sh_path}")
@@ -609,6 +615,7 @@ class Application(object):
         if not self.Connected:
             return
         self.channel.send("squeue -u $USER"+"\n")
+        self.channel.send("squeue"+"\n")
 
     def S_sacct(self):
         if not self.Connected:
@@ -770,8 +777,58 @@ fluent $FLUENT_SOLVER_VER -g -t\$SLURM_NTASKS -i  $JOU_FILE -mpi=intel -pib -cnf
 EEOOFF
 
 sbatch $USER-scheduler.slurm
-
 """
+
+sklcc_runfluentsh=r"""
+echo $JOU_FILE
+JOB_NAME=${JOU_FILE%.*}
+dos2unix $JOU_FILE
+TEMP_D=$(mktemp -d -p $HOME/.fluent_resdir) || exit 1
+SOURCE_D=$PWD
+RESULT_DNAME="Result_`basename $JOU_FILE .jou`"
+if [ -e $RESULT_DNAME ] || [ -L $RESULT_DNAME ]; then
+    LAST_RESULT_D="LastRun$RESULT_DNAME"
+    if [ -e $LAST_RESULT_D ] || [ -L $LAST_RESULT_D ]; then
+        rm -rf $(readlink -f $LAST_RESULT_D)
+    fi
+    mv -f $RESULT_DNAME "LastRun$RESULT_DNAME"
+fi
+ln -s $TEMP_D $RESULT_DNAME
+
+cd "$TEMP_D"
+for f in $(ls $SOURCE_D)
+do
+    if [ ! -L $SOURCE_D/$f ] && [ $f != $RESULT_DNAME ] ;then
+        ln -s $SOURCE_D/$f
+    fi
+done
+echo "" > stdout_fluent.txt
+echo "" > stderr_fluent.txt
+
+cat > $USER-scheduler.slurm <<EEOOFF
+#!/bin/bash
+#SBATCH -D .
+#SBATCH -n $SLURM_NTASKS
+#SBATCH -o stdout_fluent.txt
+#SBATCH -e stderr_fluent.txt
+#SBATCH --job-name=$JOB_NAME
+export FLUENT_AFFINITY=0
+export SLURM_ENABLED=1
+FL_SCHEDULER_HOST_FILE=slurm.\${SLURM_JOB_ID}.hosts
+/bin/rm -rf \${FL_SCHEDULER_HOST_FILE}
+scontrol show hostnames "\$SLURM_JOB_NODELIST" >> \$FL_SCHEDULER_HOST_FILE
+export SCHEDULER_TIGHT_COUPLING=1
+
+echo fluent $FLUENT_SOLVER_VER -g -t\$SLURM_NTASKS -i  $JOU_FILE -mpi=intel -pib -cnf=\${FL_SCHEDULER_HOST_FILE}
+fluent $FLUENT_SOLVER_VER -g -t\$SLURM_NTASKS -i  $JOU_FILE -mpi=intel -pib -cnf=\${FL_SCHEDULER_HOST_FILE}
+
+EEOOFF
+
+sbatch $USER-scheduler.slurm
+"""
+
+
+
 
 
 if __name__== '__main__':
