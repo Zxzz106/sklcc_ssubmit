@@ -1,17 +1,11 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 import os, json, base64, random, tempfile, zipfile, time, re
-from sshClient import sshClient
-from thread_func import thread_func
-import AppUI
+from sklcc_ssubmit.sshClient import sshClient
+from sklcc_ssubmit.thread_func import thread_func
+from sklcc_ssubmit import AppUI
 dir_sepa="------------------------文件夹------------------------"
 file_sepa="-------------------------文件-------------------------"
-
-
-        
-
-
-
 
 class Application(object):
     para={"Cluster": "","Server": "","Port": "","Username": "","Password": "","Version": "","Solver": "","Partition": "","Core": "","Account": "","WorkingDir": "","Journal": ""}
@@ -67,18 +61,21 @@ class Application(object):
         self.apply_para()
 
     def apply_para(self): # 将cfg中的配置写入Entry
-        self.Entry_Text(self.UI.Server_Entry, self.para["Server"])
-        self.Entry_Text(self.UI.ServerPort_Entry, self.para["Port"])
-        self.Entry_Text(self.UI.Username_Entry, self.para["Username"])
-        self.Entry_Text(self.UI.Password_Entry, self.para["Password"])
-        self.Entry_Text(self.UI.Ver_Combobox, self.para["Version"])
-        self.Entry_Text(self.UI.Solver_Combobox, self.para["Solver"])
-        self.Entry_Text(self.UI.Partition_Entry, self.para["Partition"])
-        self.Entry_Text(self.UI.Processor_Spinbox, self.para["Core"])
-        self.Entry_Text(self.UI.Account_Entry, self.para["Account"])
-        self.Entry_Text(self.UI.WorkingDir_Entry, self.para["WorkingDir"])
-        self.Entry_Text(self.UI.Journal_Entry, self.para["Journal"])
-        self.Entry_Text(self.UI.Cluster_Combobox, self.para["Cluster"])
+        try:
+            self.Entry_Text(self.UI.Server_Entry, self.para["Server"])
+            self.Entry_Text(self.UI.ServerPort_Entry, self.para["Port"])
+            self.Entry_Text(self.UI.Username_Entry, self.para["Username"])
+            self.Entry_Text(self.UI.Password_Entry, self.para["Password"])
+            self.Entry_Text(self.UI.Ver_Combobox, self.para["Version"])
+            self.Entry_Text(self.UI.Solver_Combobox, self.para["Solver"])
+            self.Entry_Text(self.UI.Partition_Entry, self.para["Partition"])
+            self.Entry_Text(self.UI.Processor_Spinbox, self.para["Core"])
+            self.Entry_Text(self.UI.Account_Entry, self.para["Account"])
+            self.Entry_Text(self.UI.WorkingDir_Entry, self.para["WorkingDir"])
+            self.Entry_Text(self.UI.Journal_Entry, self.para["Journal"])
+            self.Entry_Text(self.UI.Cluster_Combobox, self.para["Cluster"])
+        except:
+            pass
         
     def get_para(self): # 将Entry写入cfg
         self.para["Cluster"]=self.UI.Cluster_Combobox.get().strip()
@@ -536,7 +533,7 @@ class Application(object):
         print(arg_list)
         
         
-        if not messagebox.askokcancel("提交作业", f"工作文件夹：{arg_list[0]}\nFluent版本：{self.para["Version"]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n确认提交？"):
+        if not messagebox.askokcancel("提交作业", f'工作文件夹：{arg_list[0]}\nFluent版本：{self.para["Version"]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n确认提交？'):
             return
         
         sh_path=self.para["WorkingDir"]+"/RunFluent.sh"

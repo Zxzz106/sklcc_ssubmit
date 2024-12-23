@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-from thread_func import thread_func
+from sklcc_ssubmit.thread_func import thread_func
 
 class M_Fluent(object):
     def __init__(self, root, App):
@@ -39,7 +39,7 @@ class M_Fluent(object):
         WorkingDir_Label.pack(side=tk.LEFT, anchor=tk.W, padx=(0,5))
         WorkingDirS_Button=tk.Button(WorkingDirLB_Frame, text="选择当前", command=lambda: App.C_wd_selcur(self.WorkingDir_Entry))
         WorkingDirS_Button.pack(side=tk.LEFT, padx=(0,5))
-        WorkingDirT_Button=tk.Button(WorkingDirLB_Frame, text="跟踪输出", command=lambda: thread_func(App.C_wd_tail(self.WorkingDir_Entry, self.Journal_Entry)))
+        WorkingDirT_Button=tk.Button(WorkingDirLB_Frame, text="跟踪输出", command=lambda: App.C_wd_tail(self.WorkingDir_Entry, self.Journal_Entry))
         WorkingDirT_Button.pack(side=tk.LEFT, padx=(0,5))
         WorkingDir_Frame=tk.Frame(inFluent_Frame)
         WorkingDir_Frame.pack(side=tk.TOP, fill=tk.X, pady=(5,0))
@@ -255,7 +255,7 @@ class UI(object):
         WorkingDir_Label.pack(side=tk.LEFT, anchor=tk.W, padx=(0,5))
         WorkingDirS_Button=tk.Button(WorkingDirLB_Frame, text="选择当前", command=lambda: self.App.C_wd_selcur(self.WorkingDir_Entry))
         WorkingDirS_Button.pack(side=tk.LEFT, padx=(0,5))
-        WorkingDirT_Button=tk.Button(WorkingDirLB_Frame, text="跟踪输出", command=lambda: thread_func(self.App.C_wd_tail(self.WorkingDir_Entry,self.Journal_Entry)))
+        WorkingDirT_Button=tk.Button(WorkingDirLB_Frame, text="跟踪输出", command=lambda: self.App.C_wd_tail(self.WorkingDir_Entry,self.Journal_Entry))
         WorkingDirT_Button.pack(side=tk.LEFT, padx=(0,5))
         WorkingDir_Frame=tk.Frame(self.Set_Frame)
         WorkingDir_Frame.pack(side=tk.TOP, fill=tk.X, pady=(5,0))

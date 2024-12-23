@@ -1,3 +1,3 @@
-from sklcc_ssubmit import Slurm_Submit
+from sklcc_ssubmit.ssubmit import Slurm_Submit
 
 Slurm_Submit()
