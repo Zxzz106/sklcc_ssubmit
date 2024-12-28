@@ -311,7 +311,7 @@ class Application(object):
 
         # sftp=paramiko.SFTPClient.from_transport(self.sshc_transport)
         
-        file_paths=filedialog.askopenfilenames(title="选择文件")
+        file_paths=filedialog.askopenfilenames(title="选择文件", initialdir=os.path.expanduser('~'))
 
         if not file_paths:
             return
@@ -351,7 +351,7 @@ class Application(object):
         if not self.Connected:
             return
         
-        dir_path=filedialog.askdirectory(title="选择文件夹")
+        dir_path=filedialog.askdirectory(title="选择文件夹", initialdir=os.path.expanduser('~'))
 
         if not dir_path:
             return
@@ -466,6 +466,7 @@ class Application(object):
 
         # self.channel.set
         self.TC_reconnect()
+        thread_func(self.auto_refresh)
         thread_func(self.keep_terminal)
 
     def C_wd_selcur(self, Ob):
@@ -521,19 +522,18 @@ class Application(object):
             if self.para["Version"]=="23.1":
                 load_fluent="module load ansys/fluent_v231"
             elif self.para["Version"]=="22.1":
-                load_fluent="export PATH=$PATH:/beegfs/home/ny2001010061/.software/ansys_inc/v221/fluent/bin"
-                messagebox.showwarning("警告", "2022R1版本可能有问题")
+                load_fluent="export PATH=$PATH:~/.software/ansys_inc/v221/fluent/bin"
             else:
                 messagebox.showerror("提交错误", "煤燃烧集群暂仅支持2023R1版本")
                 return
         else:
             return
 
-        arg_list=[self.para["WorkingDir"],load_fluent,self.para["Solver"],self.para["Journal"],self.para["Partition"],self.para["Core"],self.para["Account"]]
+        arg_list=[self.para["WorkingDir"],load_fluent,self.para["Solver"],self.para["Journal"],self.para["Partition"],self.para["Core"],self.para["Account"], self.UI.Node_Spinbox.get().strip()]
         print(arg_list)
         
         
-        if not messagebox.askokcancel("提交作业", f'工作文件夹：{arg_list[0]}\nFluent版本：{self.para["Version"]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n确认提交？'):
+        if not messagebox.askokcancel("提交作业", f'工作文件夹：{arg_list[0]}\nFluent版本：{self.para["Version"]}\n求解器：{arg_list[2]}\nJournal脚本：{arg_list[3]}\n计算分区：{arg_list[4]}\n核心数量：{arg_list[5]}\n计费账户：{arg_list[6]}\n核心数量：{arg_list[7]}\n确认提交？'):
             return
         
         sh_path=self.para["WorkingDir"]+"/RunFluent.sh"
@@ -560,6 +560,7 @@ class Application(object):
         self.send_channel("export SLURM_PARTITION="+arg_list[4])
         self.send_channel("export SLURM_NTASKS="+arg_list[5])
         self.send_channel("export SLURM_ACCOUNT="+arg_list[6])
+        self.send_channel("export SLURM_NODES="+arg_list[7])
         self.send_channel(arg_list[1])
         self.send_channel("cd "+arg_list[0])
 
@@ -573,6 +574,7 @@ class Application(object):
         self.c_cd(resdir)
     
     def getwdjobid(self):
+        self.c_refresh()
         for i in self.Current_Files:
             if re.fullmatch(r'slurm\.[0-9]+\.hosts',i) is not None:
                 return re.findall(r'\d+',i)
@@ -611,8 +613,8 @@ class Application(object):
     def S_squeue(self):
         if not self.Connected:
             return
-        self.channel.send("squeue -u $USER"+"\n")
-        self.channel.send("squeue"+"\n")
+        self.channel.send(r'squeue -o "%.8i %.10P %.18j %.15u %.5t %.12M %.6D %R"'+"\n")
+        self.channel.send(r'squeue -o "%.8i %.10P %.18j %.15u %.5t %.12M %.6D %R" -u $USER'+"\n")
 
     def S_sacct(self):
         if not self.Connected:
@@ -635,6 +637,13 @@ class Application(object):
         except:
             pass
         self.channel=self.sshc.client.invoke_shell(width=self.UI.Terminal_Text.winfo_width()//8)
+    def auto_refresh(self):
+        while True:
+            if not self.Connected:
+                return
+            time.sleep(45)
+            self.c_refresh()
+
     def keep_terminal(self):
         rev=None
         while True:
@@ -755,6 +764,7 @@ echo "" > stderr_fluent.txt
 cat > $USER-scheduler.slurm <<EEOOFF
 #!/bin/bash
 #SBATCH -D .
+#SBATCH -N $SLURM_NODES
 #SBATCH -n $SLURM_NTASKS
 #SBATCH -o stdout_fluent.txt
 #SBATCH -e stderr_fluent.txt
@@ -805,6 +815,7 @@ echo "" > stderr_fluent.txt
 cat > $USER-scheduler.slurm <<EEOOFF
 #!/bin/bash
 #SBATCH -D .
+#SBATCH -N $SLURM_NODES
 #SBATCH -n $SLURM_NTASKS
 #SBATCH -o stdout_fluent.txt
 #SBATCH -e stderr_fluent.txt
@@ -833,3 +844,6 @@ if __name__== '__main__':
 
 # To be implemented
 # 拖拽上传文件
+# 自动刷新
+# 下载打开默认地址
+# 下载丢到thread去
